@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Rust checks
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install the pinned toolchain
+        run: rustup show
+      - name: Restore reusable Cargo artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          prefix-key: forthebirds-v1
+          shared-key: x86_64
+          save-if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Test
+        run: cargo test --locked --workspace --all-targets --all-features
+      - name: Documentation
+        run: cargo doc --locked --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  aarch64:
+    name: AArch64 checks
+    runs-on: blacksmith-16vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install the pinned toolchain
+        run: rustup show
+      - name: Restore reusable Cargo artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          prefix-key: forthebirds-v1
+          shared-key: aarch64
+          save-if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+      - name: Test on native ARM
+        run: cargo test --locked --workspace --all-targets --all-features

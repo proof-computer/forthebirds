@@ -1,0 +1,14 @@
+# Cargo output
+/target
+debug
+**/*.rs.bk
+*.pdb
+
+# Agent worktrees
+/.worktrees/
+
+# Peer-local stores
+*.redb
+*.redb.*
+
+__pycache__/
