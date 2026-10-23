@@ -19,15 +19,20 @@ time, with Planetarium becoming the library's second consumer.
 
 ## Crate map
 
+Every crate is `forthebirds-<part>` so the names stay unambiguous if any is
+ever published; `liskov-cargo-harness` keeps its own name because it is useful
+to any native Liskov application, swarm or not. Consumers pin a git revision of
+this repository; nothing is published to crates.io.
+
 | Crate | Holds | From Planetarium |
 | --- | --- | --- |
-| `swarm-inference` | llama-server adapter, chat-template delimiters, exact-token prompt continuation, embedding client | `model.rs`, `embedding.rs` |
-| `swarm-runtime` | grammar-constrained generation, the activation and tool loop, token budgets, the leader and follower brief protocol | `tools.rs`, the activation shape in `peer.rs` |
-| `swarm-store` | immutable attributed records, writing allowances, replication and anti-entropy, bounded retrieval | `src/store/*` |
-| `swarm-peer-net` | pinned-TLS peer HTTP, service discovery, liveness | `peer_transport.rs`, `discovery.rs`, `readiness.rs` |
+| `forthebirds-inference` | llama-server adapter, chat-template delimiters, exact-token prompt continuation, embedding client | `model.rs`, `embedding.rs` |
+| `forthebirds-runtime` | grammar-constrained generation, the activation and tool loop, token budgets, the leader and follower brief protocol | `tools.rs`, the activation shape in `peer.rs` |
+| `forthebirds-store` | immutable attributed records, writing allowances, replication and anti-entropy, bounded retrieval | `src/store/*` |
+| `forthebirds-net` | pinned-TLS peer HTTP, service discovery, liveness | `peer_transport.rs`, `discovery.rs`, `readiness.rs` |
 | `liskov-cargo-harness` | payload fetch and verification, inference-server supervision, named-tunnel ingress, whole-line logging; useful to any native Liskov application | `launch.rs`, `deployment.rs`, `deployment_download.rs`, `cloudflared.rs`, `log.rs` |
-| `swarm-names` | deterministic agent names from peer ids | `star_names.rs` |
-| `swarm-site` | public read-only site over records with visible freshness; templates stay with each app | `http.rs`, `website/` scaffolding |
+| `forthebirds-names` | deterministic agent names from peer ids | `star_names.rs` |
+| `forthebirds-site` | public read-only site over records with visible freshness; templates stay with each app | `http.rs`, `website/` scaffolding |
 
 The seam is the record envelope: the library carries a generic action trait
 (validate shape, list evidence ids, name the kind, say whether it counts as
