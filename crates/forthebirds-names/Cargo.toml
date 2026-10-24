@@ -1,0 +1,15 @@
+[package]
+name = "forthebirds-names"
+description = "Deterministic, presentation-only names for swarm peers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+sha2 = "0.10"
+
+[lints]
+workspace = true
