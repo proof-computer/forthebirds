@@ -1,10 +1,12 @@
-//! Extracted verbatim from Planetarium src/star_names.rs at
-//! commit b9723db8e5b9fcd6fe9fa5e49fa3d9ee0384b384.
-//!
 //! Deterministic, presentation-only names for peers, never identity keys.
 //!
-//! Always show the peer id beside its name. Collisions are expected among the
-//! 2,112 combinations; callers supply the ordering key for collision ranks.
+//! The star catalogue was extracted verbatim from Planetarium's
+//! `src/star_names.rs` at commit `b9723db8e5b9fcd6fe9fa5e49fa3d9ee0384b384`.
+//! [`BIRDS`] is a second, independent catalogue beside it.
+//!
+//! Always show the peer id beside its name. There are two catalogues.
+//! Collisions are expected in either, and [`numbered`] with [`collision_ranks`]
+//! handle both. Callers supply the ordering key for collision ranks.
 
 use std::collections::BTreeMap;
 
@@ -110,15 +112,19 @@ pub const CONSTELLATIONS: [&str; 88] = [
 
 const NAME_COUNT: usize = GREEK.len() * CONSTELLATIONS.len();
 
-/// Hash the full peer id's UTF-8 bytes into the fixed name catalogue.
-pub fn star_index(peer_id: &str) -> u16 {
+/// First eight bytes of SHA-256 over the peer id's UTF-8, as a big-endian integer.
+fn peer_catalogue_hash(peer_id: &str) -> u64 {
     let digest = Sha256::digest(peer_id.as_bytes());
-    let prefix = u64::from_be_bytes(
+    u64::from_be_bytes(
         digest[..8]
             .try_into()
             .expect("SHA-256 has eight prefix bytes"),
-    );
-    (prefix % NAME_COUNT as u64) as u16
+    )
+}
+
+/// Hash the full peer id's UTF-8 bytes into the fixed name catalogue.
+pub fn star_index(peer_id: &str) -> u16 {
+    (peer_catalogue_hash(peer_id) % NAME_COUNT as u64) as u16
 }
 
 fn name_at(index: usize) -> String {
@@ -132,6 +138,148 @@ fn name_at(index: usize) -> String {
 /// Return the peer's base name, before any collision numeral.
 pub fn star_name(peer_id: &str) -> String {
     name_at(star_index(peer_id) as usize)
+}
+
+/// Common bird names, in alphabetical order. Collisions are expected.
+pub const BIRDS: [&str; 128] = [
+    "Albatross",
+    "Auk",
+    "Avocet",
+    "Bittern",
+    "Bobolink",
+    "Brambling",
+    "Bunting",
+    "Bustard",
+    "Buzzard",
+    "Chaffinch",
+    "Chiffchaff",
+    "Chough",
+    "Condor",
+    "Coot",
+    "Cormorant",
+    "Corncrake",
+    "Crake",
+    "Crane",
+    "Crossbill",
+    "Cuckoo",
+    "Curlew",
+    "Dipper",
+    "Dotterel",
+    "Dove",
+    "Dunlin",
+    "Dunnock",
+    "Eagle",
+    "Egret",
+    "Eider",
+    "Falcon",
+    "Fieldfare",
+    "Finch",
+    "Firecrest",
+    "Flycatcher",
+    "Fulmar",
+    "Gadwall",
+    "Gannet",
+    "Garganey",
+    "Godwit",
+    "Goose",
+    "Goshawk",
+    "Grebe",
+    "Grouse",
+    "Guillemot",
+    "Gull",
+    "Harrier",
+    "Hawfinch",
+    "Heron",
+    "Hobby",
+    "Hoopoe",
+    "Ibis",
+    "Jackdaw",
+    "Jay",
+    "Kestrel",
+    "Kingfisher",
+    "Kite",
+    "Kittiwake",
+    "Knot",
+    "Lapwing",
+    "Lark",
+    "Linnet",
+    "Magpie",
+    "Mallard",
+    "Martin",
+    "Merganser",
+    "Merlin",
+    "Moorhen",
+    "Nightingale",
+    "Nightjar",
+    "Nuthatch",
+    "Oriole",
+    "Osprey",
+    "Ouzel",
+    "Owl",
+    "Parakeet",
+    "Partridge",
+    "Pelican",
+    "Peregrine",
+    "Petrel",
+    "Phalarope",
+    "Pheasant",
+    "Pipit",
+    "Plover",
+    "Pochard",
+    "Ptarmigan",
+    "Puffin",
+    "Quail",
+    "Rail",
+    "Raven",
+    "Razorbill",
+    "Robin",
+    "Rook",
+    "Ruff",
+    "Sanderling",
+    "Sandpiper",
+    "Scaup",
+    "Scoter",
+    "Shearwater",
+    "Shelduck",
+    "Shoveler",
+    "Shrike",
+    "Siskin",
+    "Skua",
+    "Smew",
+    "Snipe",
+    "Sparrow",
+    "Spoonbill",
+    "Starling",
+    "Stint",
+    "Stonechat",
+    "Stork",
+    "Swallow",
+    "Swan",
+    "Swift",
+    "Tern",
+    "Thrush",
+    "Turnstone",
+    "Twite",
+    "Wagtail",
+    "Warbler",
+    "Waxwing",
+    "Wheatear",
+    "Whimbrel",
+    "Wigeon",
+    "Woodcock",
+    "Woodpecker",
+    "Wren",
+    "Wryneck",
+];
+
+/// Hash the full peer id's UTF-8 bytes into the bird catalogue.
+pub fn bird_index(peer_id: &str) -> u8 {
+    (peer_catalogue_hash(peer_id) % BIRDS.len() as u64) as u8
+}
+
+/// Return the peer's bird name.
+pub fn bird_name(peer_id: &str) -> String {
+    BIRDS[bird_index(peer_id) as usize].to_owned()
 }
 
 /// Append the one-based collision rank only when it is at least two.
@@ -276,5 +424,64 @@ mod tests {
             "Gamma Horologii"
         );
         assert_eq!(numbered("Gamma Horologii", 24), "Gamma Horologii 24");
+    }
+
+    #[test]
+    fn birds_are_128_distinct_ascending_ascii_words() {
+        assert_eq!(BIRDS.len(), 128);
+        assert_eq!(BIRDS.into_iter().collect::<BTreeSet<_>>().len(), 128);
+        for pair in BIRDS.windows(2) {
+            assert!(pair[0] < pair[1], "{} then {}", pair[0], pair[1]);
+        }
+        for name in BIRDS {
+            assert!(name.is_ascii(), "{name}");
+            let mut chars = name.chars();
+            let first = chars.next().expect("a bird name");
+            assert!(first.is_ascii_uppercase(), "{name}");
+            assert!(chars.all(|c| c.is_ascii_lowercase()), "{name}");
+        }
+    }
+
+    #[test]
+    fn birds_avoid_colour_names_and_group_words() {
+        let colours = [
+            "red", "crimson", "orange", "amber", "gold", "yellow", "lime", "green", "teal", "cyan",
+            "sky", "blue", "navy", "indigo", "violet", "purple", "magenta", "pink", "brown", "tan",
+            "grey", "silver", "black", "white",
+        ];
+        let group_words = [
+            "faction",
+            "persuasion",
+            "persuaded",
+            "convinced",
+            "camp",
+            "coalition",
+            "winner",
+        ];
+        for name in BIRDS {
+            let lower = name.to_ascii_lowercase();
+            for word in colours.iter().chain(group_words.iter()) {
+                assert!(!lower.contains(word), "{name} contains {word}");
+            }
+        }
+    }
+
+    #[test]
+    fn bird_names_match_fixed_vectors() {
+        for (id, index, name) in [
+            ("p00", 37, "Garganey"),
+            ("p01", 71, "Osprey"),
+            ("peer-158aa7bd235be5659419762aa3eecc24", 58, "Lapwing"),
+            ("peer-41dbda9a1a4b287ee097ca501ab2178a", 50, "Ibis"),
+            ("peer-b60bbdf8756a4686c265882adda8214d", 112, "Swan"),
+        ] {
+            assert_eq!(bird_index(id), index, "{id}");
+            assert_eq!(bird_name(id), name, "{id}");
+        }
+    }
+
+    #[test]
+    fn numbered_bird_name_appends_the_rank() {
+        assert_eq!(numbered(&bird_name("p00"), 2), "Garganey 2");
     }
 }
