@@ -24,5 +24,8 @@ time = "0.3"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 x509-parser = "0.18"
 
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.30", features = ["fs"] }
+
 [lints]
 workspace = true
