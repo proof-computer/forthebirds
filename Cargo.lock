@@ -424,6 +424,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "forthebirds-runtime"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "forthebirds-inference",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "fs-err"
 version = "3.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
