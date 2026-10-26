@@ -568,6 +568,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "forthebirds-sync"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "forthebirds-net",
+ "forthebirds-store",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "fs-err"
 version = "3.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

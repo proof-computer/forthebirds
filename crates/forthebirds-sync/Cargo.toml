@@ -1,0 +1,28 @@
+[package]
+name = "forthebirds-sync"
+description = "Anti-entropy between swarm peers: an exchange route and a push-pull loop over forthebirds-store pages"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+forthebirds-store = { path = "../forthebirds-store" }
+forthebirds-net = { path = "../forthebirds-net" }
+axum = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+
+[dev-dependencies]
+forthebirds-net = { path = "../forthebirds-net" }
+forthebirds-store = { path = "../forthebirds-store" }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[lints]
+workspace = true
