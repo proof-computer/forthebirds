@@ -1,0 +1,81 @@
+--- a/src/upgrade.rs
++++ b/src/upgrade.rs
+@@ -157,12 +157,20 @@
+ pub struct OpenOptions {
+     /// How files written by an older rouchdb are handled.
+     pub upgrade: UpgradePolicy,
++    /// Total redb cache capacity. None preserves the engine default. Zero is explicit.
++    pub cache_size_bytes: Option<usize>,
+ }
+ 
+ impl OpenOptions {
+     /// The defaults: files written by rouchdb <= 0.4 are refused.
+     pub fn new() -> Self {
+         Self::default()
++    }
++
++    /// Set the ordinary-open cache capacity, including an explicit zero.
++    pub fn cache_size(mut self, bytes: usize) -> Self {
++        self.cache_size_bytes = Some(bytes);
++        self
+     }
+ 
+     /// Set the [`UpgradePolicy`].
+@@ -676,7 +684,11 @@
+     path: &Path,
+     options: &OpenOptions,
+ ) -> Result<(Database, Option<UpgradeReport>)> {
+-    let db = db_err!(Database::create(path))?;
++    let mut builder = Database::builder();
++    if let Some(bytes) = options.cache_size_bytes {
++        builder.set_cache_size(bytes);
++    }
++    let db = db_err!(builder.create(path))?;
+     match detect(&db, path)? {
+         Detected::Empty => {
+             // The tables, the metadata and the guard are created together:
+@@ -713,10 +725,10 @@
+                 (policy, _) => policy.clone(),
+             };
+             // Upgrade through a handle with a small cache (see
+-            // UPGRADE_CACHE_BYTES), then reopen with the default one.
++            // UPGRADE_CACHE_BYTES), then reopen with the caller's ordinary-open cache setting.
+             drop(db);
+             let report = upgrade_file(path, &policy, false)?;
+-            let (db, _) = open_database(path, &OpenOptions::new())?;
++            let (db, _) = open_database(path, options)?;
+             Ok((db, Some(report)))
+         }
+     }
+@@ -2046,6 +2058,31 @@
+         assert!(err.contains("this file requires rouchdb >= 0.5"), "{err}");
+         let meta = read_meta(&txn.open_table(META_TABLE).unwrap()).unwrap();
+         assert_eq!(meta.schema, SCHEMA_VERSION);
++    }
++
++    #[tokio::test]
++    async fn configured_cache_opens_fresh_and_upgraded_files() {
++        let dir = tempfile::tempdir().unwrap();
++        let fresh = dir.path().join("fresh-cache.redb");
++        let options = OpenOptions::new().cache_size(0);
++        assert_eq!(options.cache_size_bytes, Some(0));
++        let db = RedbAdapter::open_with(&fresh, "fresh", options.clone()).unwrap();
++        assert_eq!(db.info().await.unwrap().doc_count, 0);
++        drop(db);
++        let db = RedbAdapter::open_with(&fresh, "fresh", options).unwrap();
++        assert_eq!(db.info().await.unwrap().doc_count, 0);
++        drop(db);
++        let legacy = dir.path().join("legacy-cache.redb");
++        sample_legacy(&legacy);
++        let options = OpenOptions::new()
++            .cache_size(0)
++            .upgrade(UpgradePolicy::InPlaceNoBackup);
++        let db = RedbAdapter::open_with(&legacy, "legacy", options.clone()).unwrap();
++        let count = db.info().await.unwrap().doc_count;
++        assert!(count > 0);
++        drop(db);
++        let db = RedbAdapter::open_with(&legacy, "legacy", options).unwrap();
++        assert_eq!(db.info().await.unwrap().doc_count, count);
+     }
+ 
+     #[test]

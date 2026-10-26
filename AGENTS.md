@@ -12,6 +12,8 @@ delivery; this file governs local conventions.
 - `rust-toolchain.toml`: the pinned development and CI toolchain.
 - `.github/workflows/ci.yml`: the local checks repeated on GitHub, on x86_64
   and native AArch64.
+- `vendor/rouchdb-adapter-redb`: the patched RouchDB redb adapter (`UPSTREAM.md`);
+  `scripts/check-vendor.py` proves its source is upstream plus `cache-options.patch`.
 
 ## Extraction rules
 
@@ -30,6 +32,7 @@ delivery; this file governs local conventions.
 ## Validation
 
 ```sh
+python3 scripts/check-vendor.py
 cargo fmt --all --check
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo test --locked --workspace --all-targets --all-features
