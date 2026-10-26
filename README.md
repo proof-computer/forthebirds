@@ -29,8 +29,8 @@ this repository; nothing is published to crates.io.
 | `forthebirds-inference` | llama-server adapter, chat-template delimiters, exact-token prompt continuation, embedding client | `model.rs`, `embedding.rs` |
 | `forthebirds-runtime` | grammar-constrained generation, the activation and tool loop, token budgets, the leader and follower brief protocol | `tools.rs`, the activation shape in `peer.rs` |
 | `forthebirds-store` | immutable attributed records, writing allowances, replication and anti-entropy, bounded retrieval | `src/store/*` |
-| `forthebirds-net` | pinned-TLS peer HTTP, service discovery, liveness | `peer_transport.rs`, `discovery.rs`, `readiness.rs` |
-| `liskov-cargo-harness` | payload fetch and verification, inference-server supervision, named-tunnel ingress, whole-line logging; useful to any native Liskov application | `launch.rs`, `deployment.rs`, `deployment_download.rs`, `cloudflared.rs`, `log.rs` |
+| `forthebirds-net` | pinned-TLS peer HTTP with hourly identity rotation and the local advertisement. Liskov service discovery (`discovery.rs`, `discovery/direct.rs`) stays in Planetarium because it validates Acurast job references | `peer_transport.rs` |
+| `liskov-cargo-harness` | payload fetch and verification, inference-server supervision, named-tunnel ingress, whole-line logging, the readiness signal that waits on the tunnel status; useful to any native Liskov application | `launch.rs`, `deployment.rs`, `deployment_download.rs`, `cloudflared.rs`, `log.rs`, `readiness.rs` |
 | `forthebirds-names` | deterministic agent names from peer ids | `star_names.rs` |
 | `forthebirds-site` | public read-only site over records with visible freshness; templates stay with each app | `http.rs`, `website/` scaffolding |
 
