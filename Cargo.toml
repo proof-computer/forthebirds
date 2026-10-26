@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "vendor/rouchdb-adapter-redb"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,3 +11,6 @@ repository = "https://github.com/proof-computer/forthebirds"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+[patch.crates-io]
+rouchdb-adapter-redb = { path = "vendor/rouchdb-adapter-redb" }
