@@ -2,13 +2,15 @@
 
 mod exchange;
 mod replicator;
+mod runs;
 
 pub use exchange::{Exchange, ExchangeReply};
 pub use replicator::{LinkStatus, Replicator, SyncConfig, TickSummary};
+pub use runs::Runs;
 
 /// Wire version of this crate's exchange. It is not another product's protocol.
 pub const PROTOCOL: u32 = 1;
-/// `POST` path mounted by [`Replicator::router`].
+/// `POST` path mounted by [`Replicator::router`] and [`Runs::router`].
 pub const ROUTE: &str = "/api/sync/v1/exchange";
 /// Pages one peer may exchange per tick while either side still has more.
 pub const CATCH_UP_PAGES: usize = 64;
