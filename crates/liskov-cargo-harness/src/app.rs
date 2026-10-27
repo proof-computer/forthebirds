@@ -1,12 +1,18 @@
 //! Application seam. The harness names one native Liskov application and never
 //! reads that application's own configuration.
 
-use crate::{Error, Result};
+use crate::{Error, Result, deployment::Deployment};
 use std::{ffi::OsString, path::Path};
 
 /// How the supervised peer process is started. Planetarium passes
 /// `peer --config <path>`; plumage passes `peer <path>`.
 pub type PeerArgs = fn(&Path) -> Vec<OsString>;
+
+/// Maps an application's deployment file to a resolved harness [`Deployment`].
+///
+/// [`HarnessApp::new`] installs [`crate::deployment::read`], which parses the
+/// harness JSON and resolves paths against the file's parent.
+pub type Descriptor = fn(&Path) -> Result<Deployment>;
 
 fn peer_config_args(path: &Path) -> Vec<OsString> {
     vec![
@@ -22,6 +28,8 @@ pub struct HarnessApp {
     name: String,
     /// Arguments after the peer executable. The path is absolute.
     pub peer_args: PeerArgs,
+    /// Reads the deployment file passed to [`crate::deployment::run`].
+    pub descriptor: Descriptor,
 }
 
 impl HarnessApp {
@@ -43,6 +51,7 @@ impl HarnessApp {
         Ok(Self {
             name: name.to_string(),
             peer_args: peer_config_args,
+            descriptor: crate::deployment::read,
         })
     }
 
