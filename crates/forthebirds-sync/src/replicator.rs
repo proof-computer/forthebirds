@@ -29,6 +29,9 @@ pub struct LinkStatus {
     pub last_attempt_ms: u64,
     pub last_success_ms: Option<u64>,
     pub error: Option<&'static str>,
+    /// Attempt time when a catch-up finished because neither side had more
+    /// pages. Unchanged when the page cap or an error stops the attempt.
+    pub caught_up_ms: Option<u64>,
 }
 
 /// Values a consumer passes to `forthebirds_net::publish_summary`.
@@ -68,6 +71,21 @@ impl<H, R, X> Clone for Replicator<H, R, X> {
         Self {
             inner: Arc::clone(&self.inner),
         }
+    }
+}
+
+impl<H, R, X> Replicator<H, R, X> {
+    /// The run this replicator serves.
+    pub fn run_id(&self) -> &str {
+        &self.inner.config.run_id
+    }
+
+    pub(crate) fn peer_id(&self) -> &str {
+        &self.inner.config.peer_id
+    }
+
+    pub(crate) fn token(&self) -> &str {
+        &self.inner.config.token
     }
 }
 
@@ -275,9 +293,12 @@ where
             let entry = links.entry(name).or_default();
             entry.last_attempt_ms = forthebirds_store::now();
             match outcome {
-                Ok(()) => {
+                Ok(drained) => {
                     entry.last_success_ms = Some(entry.last_attempt_ms);
                     entry.error = None;
+                    if drained {
+                        entry.caught_up_ms = Some(entry.last_attempt_ms);
+                    }
                 }
                 Err(code) => {
                     failure_code = code;
@@ -291,6 +312,17 @@ where
     /// Link status recorded by the latest ticks, keyed by target name.
     pub async fn links(&self) -> BTreeMap<String, LinkStatus> {
         self.inner.links.lock().await.clone()
+    }
+
+    /// Latest [`LinkStatus::caught_up_ms`] across links, if any link has drained.
+    pub async fn caught_up_ms(&self) -> Option<u64> {
+        self.inner
+            .links
+            .lock()
+            .await
+            .values()
+            .filter_map(|link| link.caught_up_ms)
+            .max()
     }
 
     /// Signalled when an import adds at least one record.
@@ -331,22 +363,24 @@ where
         Ok(clients.get(key).expect("client inserted").clone())
     }
 
+    /// `Ok(true)` when neither side had more pages. `Ok(false)` when the page
+    /// cap stopped the attempt with more left.
     async fn catch_up(
         &self,
         target: &PeerTarget,
         shutdown: &mut watch::Receiver<bool>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<bool, &'static str> {
         for _ in 0..CATCH_UP_PAGES {
             if *shutdown.borrow() {
                 return Err("shutdown");
             }
             match self.sync_once(target).await {
                 Ok(true) => {}
-                Ok(false) => return Ok(()),
+                Ok(false) => return Ok(true),
                 Err(error) => return Err(static_code(H::code(&error))),
             }
         }
-        Ok(())
+        Ok(false)
     }
 
     async fn summary(&self, failure_code: &'static str) -> TickSummary {
@@ -358,7 +392,7 @@ where
     }
 }
 
-async fn handle_exchange<H, R, X>(
+pub(crate) async fn handle_exchange<H, R, X>(
     replicator: Replicator<H, R, X>,
     headers: HeaderMap,
     body: axum::body::Bytes,
@@ -387,7 +421,7 @@ where
     }
 }
 
-fn authorized(token: &str, candidate: Option<&str>) -> bool {
+pub(crate) fn authorized(token: &str, candidate: Option<&str>) -> bool {
     let expected = format!("Bearer {token}");
     let value = candidate.unwrap_or("").as_bytes();
     let mut difference = value.len() ^ expected.len();
@@ -400,7 +434,7 @@ fn authorized(token: &str, candidate: Option<&str>) -> bool {
     difference == 0
 }
 
-fn coded(status: StatusCode, code: &'static str) -> Response {
+pub(crate) fn coded(status: StatusCode, code: &'static str) -> Response {
     (status, Json(serde_json::json!({"code": code}))).into_response()
 }
 
