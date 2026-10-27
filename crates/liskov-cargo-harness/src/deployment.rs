@@ -130,28 +130,31 @@ fn local_port(value: &str) -> Result<u16> {
         .ok_or_else(|| fail("supervised endpoint requires an explicit port"))
 }
 
+/// Parse the harness JSON at `path` and resolve it against that file's parent.
+pub fn read(path: &Path) -> Result<Deployment> {
+    let root = path.parent().unwrap_or(Path::new("."));
+    let deployment: Deployment =
+        serde_json::from_slice(&std::fs::read(path).map_err(|_| fail("cannot read deployment"))?)
+            .map_err(|_| fail("invalid deployment JSON"))?;
+    deployment.resolve(root)
+}
+
 impl Deployment {
-    fn load(path: &Path) -> Result<Self> {
-        let root = path.parent().unwrap_or(Path::new("."));
-        let mut deployment: Self = serde_json::from_slice(
-            &std::fs::read(path).map_err(|_| fail("cannot read deployment"))?,
-        )
-        .map_err(|_| fail("invalid deployment JSON"))?;
+    /// Join every relative path to `root`, then validate. Absolute paths stay.
+    pub fn resolve(mut self, root: &Path) -> Result<Self> {
         // Bundle-relative paths resolve beside the descriptor, independent of cwd.
-        for path in std::iter::once(&mut deployment.peer_config)
-            .chain(std::iter::once(&mut deployment.server))
-            .chain(std::iter::once(&mut deployment.peer.path))
-            .chain(std::iter::once(&mut deployment.model.path))
+        for path in std::iter::once(&mut self.peer_config)
+            .chain(std::iter::once(&mut self.server))
+            .chain(std::iter::once(&mut self.peer.path))
+            .chain(std::iter::once(&mut self.model.path))
             .chain(
-                deployment
-                    .server_files
+                self.server_files
                     .iter_mut()
-                    .chain(deployment.extra_files.iter_mut())
+                    .chain(self.extra_files.iter_mut())
                     .map(|input| &mut input.path),
             )
             .chain(
-                deployment
-                    .embedding
+                self.embedding
                     .as_mut()
                     .map(|embedding| &mut embedding.model.path),
             )
@@ -160,11 +163,11 @@ impl Deployment {
                 *path = root.join(&*path);
             }
         }
-        if let Some(cloud) = &mut deployment.cloudflared {
+        if let Some(cloud) = &mut self.cloudflared {
             cloud.resolve_paths(root);
         }
-        deployment.validate()?;
-        Ok(deployment)
+        self.validate()?;
+        Ok(self)
     }
 
     fn validate(&self) -> Result<()> {
@@ -429,7 +432,7 @@ fn admit_processor_memory(name: &str, floor_mib: u64, point: &str) -> Result<()>
 }
 
 pub async fn run(app: &HarnessApp, path: &Path, shutdown: impl Future<Output = ()>) -> Result<()> {
-    let deployment = Deployment::load(path)?;
+    let deployment = (app.descriptor)(path)?;
     let token = std::env::var(app.env("PEER_TOKEN")).map_err(|_| fail("missing peer token"))?;
     if !(24..=256).contains(&token.len()) || !token.bytes().all(|byte| (33..=126).contains(&byte)) {
         return Err(fail("invalid peer token"));
