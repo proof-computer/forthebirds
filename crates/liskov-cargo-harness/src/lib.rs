@@ -6,12 +6,14 @@
 //! optional named-tunnel connector, and starts the application peer. It does
 //! not parse the peer's configuration: the deployment descriptor carries the
 //! inference envelope, and [`HarnessApp`] turns every environment variable
-//! name into `LISKOV_<APP>_…`.
+//! name into `LISKOV_<APP>_…`. [`directory`] reads the helper's direct-peer
+//! directory into bounded peer entries and does not decode job references.
 
 mod app;
 pub mod cloudflared;
 pub mod deployment;
 mod deployment_download;
+pub mod directory;
 mod error;
 pub mod launch;
 mod log;
