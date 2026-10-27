@@ -20,6 +20,10 @@ delivery; this file governs local conventions.
 - Move, do not rewrite. A module comes from `liskov-planetarium` at a named
   commit, in a rename-preserving move, with its offline tests. Record the
   source commit in the pull request.
+- `liskov-cargo-harness` is a recorded copy, not a move (ADR-0262 §2): Planetarium keeps its own harness
+  until it rebinds after BKLG-20261013-1mra. The crate may name Liskov runtime
+  concepts (payload, helper files, runtime instance, the ready file), never
+  Acurast or IPFS.
 - The move must not change what Planetarium does. Planetarium's offline tests
   pin that; a behaviour change is a separate pull request with its own reason.
 - No crate here knows about Acurast, IPFS, jobs or artifacts. Domain actions,
