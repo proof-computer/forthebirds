@@ -46,6 +46,16 @@ pub trait Activation: Send {
         turn: usize,
         context: &mut Value,
     ) -> impl Future<Output = Result<Option<String>, Self::Error>> + Send;
+    /// Choose this turn's grammar after `before_turn` updates the context.
+    /// `None` keeps the fixed schema passed to `run`; a returned schema's
+    /// property order and the validation of generated actions belong to the host.
+    fn schema_for_turn(
+        &mut self,
+        _turn: usize,
+        _context: &Value,
+    ) -> impl Future<Output = Result<Option<Value>, Self::Error>> + Send {
+        std::future::ready(Ok(None))
+    }
     fn prepare(
         &mut self,
         messages: &mut Vec<Value>,
@@ -103,6 +113,7 @@ pub async fn run<A: Activation, S: Serialize + Sync>(
     let mut pending_turn: Option<String> = None;
     for turn in 0..limits.max_steps {
         let suffix = host.before_turn(turn, &mut context).await?;
+        let turn_schema = host.schema_for_turn(turn, &context).await?;
         let mut continued = None;
         if let (Some((previous, generated)), Some(turn_text), Some(d)) =
             (&slot, &pending_turn, &delimiters)
@@ -140,9 +151,18 @@ pub async fn run<A: Activation, S: Serialize + Sync>(
         // No automatic retry. If generation/decoding fails, the durable
         // reservation remains consumed, including across process restart.
         let prompt_tokens = prepared.tokens.clone();
-        let completion = model
-            .complete(prepared, schema, delimiters.as_ref())
-            .await?;
+        let completion = match turn_schema {
+            Some(value) => {
+                model
+                    .complete(prepared, &value, delimiters.as_ref())
+                    .await?
+            }
+            None => {
+                model
+                    .complete(prepared, schema, delimiters.as_ref())
+                    .await?
+            }
+        };
         let (value, output) = (completion.action, completion.generated);
         slot = if completion.tokens.is_empty() {
             None
@@ -217,28 +237,31 @@ mod tests {
     #[derive(Clone)]
     struct Script {
         calls: Arc<Mutex<Vec<Value>>>,
+        requests: Arc<Mutex<Vec<Value>>>,
     }
 
-    async fn serve(calls: Vec<Value>) -> (String, tokio::task::JoinHandle<()>) {
+    async fn serve(calls: Vec<Value>) -> (String, tokio::task::JoinHandle<()>, Script) {
         let script = Script {
             calls: Arc::new(Mutex::new(calls)),
+            requests: Arc::new(Mutex::new(Vec::new())),
         };
         let router = Router::new()
             .route(
                 "/completion",
                 post(
-                    |HttpState(script): HttpState<Script>, Json(_request): Json<Value>| async move {
+                    |HttpState(script): HttpState<Script>, Json(request): Json<Value>| async move {
+                        script.requests.lock().unwrap().push(request);
                         Json(script.calls.lock().unwrap().remove(0))
                     },
                 ),
             )
-            .with_state(script);
+            .with_state(script.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/", listener.local_addr().unwrap());
         let task = tokio::spawn(async move {
             axum::serve(listener, router).await.unwrap();
         });
-        (url, task)
+        (url, task, script)
     }
 
     struct Rec {
@@ -321,7 +344,7 @@ mod tests {
 
     #[tokio::test]
     async fn scripted_look_then_finish_logs_the_reserve_settle_act_order() {
-        let (url, task) = serve(vec![completion("look"), completion("finish")]).await;
+        let (url, task, _) = serve(vec![completion("look"), completion("finish")]).await;
         let model = model(&url);
         let mut host = Rec {
             log: Vec::new(),
@@ -350,7 +373,7 @@ mod tests {
 
     #[tokio::test]
     async fn three_non_finishing_calls_end_at_tool_limit_after_three_reservations() {
-        let (url, task) = serve(vec![
+        let (url, task, _) = serve(vec![
             completion("look"),
             completion("look"),
             completion("look"),
@@ -382,7 +405,7 @@ mod tests {
 
     #[tokio::test]
     async fn before_turn_failure_at_turn_zero_reserves_nothing() {
-        let (url, task) = serve(vec![]).await;
+        let (url, task, _) = serve(vec![]).await;
         let model = model(&url);
         let mut host = Rec {
             log: Vec::new(),
@@ -396,6 +419,158 @@ mod tests {
         assert_eq!(error.code, "stopped");
         assert_eq!(error.message, "before turn zero");
         assert!(host.log.iter().all(|line| !line.starts_with("reserve")));
+    }
+
+    struct SchemaRec {
+        rec: Rec,
+        narrowed: Value,
+        fail_schema: bool,
+        turns: Vec<usize>,
+    }
+
+    impl Activation for SchemaRec {
+        type Output = String;
+        type Error = InferenceError;
+
+        async fn begin(
+            &mut self,
+            activation: &str,
+            context: &mut Value,
+        ) -> Result<(), Self::Error> {
+            self.rec.begin(activation, context).await
+        }
+        async fn before_turn(
+            &mut self,
+            turn: usize,
+            context: &mut Value,
+        ) -> Result<Option<String>, Self::Error> {
+            context["turn"] = json!(turn);
+            self.rec.before_turn(turn, context).await
+        }
+        async fn schema_for_turn(
+            &mut self,
+            turn: usize,
+            context: &Value,
+        ) -> Result<Option<Value>, Self::Error> {
+            assert_eq!(context["turn"], json!(turn));
+            self.turns.push(turn);
+            if self.fail_schema {
+                return Err(InferenceError::new("schema", "schema refused"));
+            }
+            Ok((turn == 0).then(|| self.narrowed.clone()))
+        }
+        async fn prepare(
+            &mut self,
+            messages: &mut Vec<Value>,
+            context: &Value,
+        ) -> Result<Prepared, Self::Error> {
+            assert!(!self.fail_schema, "prepare must follow schema selection");
+            self.rec.prepare(messages, context).await
+        }
+        async fn reserve(
+            &mut self,
+            operation: &str,
+            amount: u64,
+            continued: bool,
+            messages: &[Value],
+        ) -> Result<String, Self::Error> {
+            self.rec
+                .reserve(operation, amount, continued, messages)
+                .await
+        }
+        async fn settle(&mut self, reservation: &str, actual: u64) -> Result<(), Self::Error> {
+            self.rec.settle(reservation, actual).await
+        }
+        async fn act(
+            &mut self,
+            activation: &str,
+            operation: &str,
+            call: &Value,
+            input_tokens: u64,
+            continued: bool,
+            context: &mut Value,
+        ) -> Result<Step<String>, Self::Error> {
+            self.rec
+                .act(
+                    activation,
+                    operation,
+                    call,
+                    input_tokens,
+                    continued,
+                    context,
+                )
+                .await
+        }
+    }
+
+    #[tokio::test]
+    async fn per_turn_schema_overrides_then_falls_back_without_changing_action_order() {
+        let (url, task, script) = serve(vec![completion("look"), completion("finish")]).await;
+        let model = model(&url);
+        let fixed = json!({"type":"object", "properties":{"tool":{"enum":["look", "finish"]}}});
+        let narrowed = json!({"type":"object", "properties":{"tool":{"const":"look"}}});
+        let mut host = SchemaRec {
+            rec: Rec {
+                log: Vec::new(),
+                fail_before: false,
+            },
+            narrowed: narrowed.clone(),
+            fail_schema: false,
+            turns: Vec::new(),
+        };
+        let output = run(&model, &fixed, limits(), &mut host, &mut messages(), "a")
+            .await
+            .unwrap();
+        task.abort();
+        assert_eq!(output, "done");
+        assert_eq!(host.turns, vec![0, 1]);
+        let requests = script.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0]["json_schema"], narrowed);
+        assert_eq!(requests[1]["json_schema"], fixed);
+        assert_eq!(
+            host.rec.log,
+            vec![
+                "begin a",
+                "reserve a-0 74 false",
+                "settle r-a-0 13",
+                "act a-0 \"look\" 10",
+                "reserve a-1 74 false",
+                "settle r-a-1 13",
+                "act a-1 \"finish\" 10",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn schema_failure_at_turn_zero_sends_no_request_and_reserves_nothing() {
+        let (url, task, script) = serve(vec![]).await;
+        let model = model(&url);
+        let mut host = SchemaRec {
+            rec: Rec {
+                log: Vec::new(),
+                fail_before: false,
+            },
+            narrowed: json!({}),
+            fail_schema: true,
+            turns: Vec::new(),
+        };
+        let error = run(
+            &model,
+            &json!({}),
+            limits(),
+            &mut host,
+            &mut messages(),
+            "a",
+        )
+        .await
+        .unwrap_err();
+        task.abort();
+        assert_eq!(error.code, "schema");
+        assert_eq!(error.message, "schema refused");
+        assert_eq!(host.turns, vec![0]);
+        assert!(script.requests.lock().unwrap().is_empty());
+        assert_eq!(host.rec.log, vec!["begin a"]);
     }
 
     #[test]
