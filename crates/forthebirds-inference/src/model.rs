@@ -236,7 +236,7 @@ impl Model {
                     stream: false,
                     cache_prompt: true,
                     return_tokens: true,
-                    temperature: 0.3,
+                    temperature: self.config.temperature,
                     json_schema: schema,
                     message_delimiters,
                 },
