@@ -11,6 +11,9 @@ pub struct InferenceConfig {
     pub embedding_url: Option<String>,
     pub context_tokens: usize,
     pub output_tokens: u32,
+    /// Posted as llama-server's `temperature` on every `/completion` request.
+    /// This crate does not validate the value.
+    pub temperature: f64,
     pub render_tokens: Option<usize>,
     pub inference_timeout_seconds: u64,
     pub request_timeout_seconds: u64,
@@ -48,6 +51,7 @@ mod tests {
             embedding_url: None,
             context_tokens: DEFAULT_RENDER_TOKENS * 2,
             output_tokens: 256,
+            temperature: 0.3,
             render_tokens: None,
             inference_timeout_seconds: 60,
             request_timeout_seconds: 30,

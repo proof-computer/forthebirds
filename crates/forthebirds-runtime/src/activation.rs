@@ -213,11 +213,16 @@ mod tests {
     }
 
     fn model(url: &str) -> Model {
+        model_at(url, 0.3)
+    }
+
+    fn model_at(url: &str, temperature: f64) -> Model {
         Model::new(&InferenceConfig {
             model_url: url.to_owned(),
             embedding_url: None,
             context_tokens: 4096,
             output_tokens: 64,
+            temperature,
             render_tokens: None,
             inference_timeout_seconds: 30,
             request_timeout_seconds: 30,
@@ -340,6 +345,33 @@ mod tests {
             json!({"role":"system","content":"s"}),
             json!({"role":"user","content":"{}"}),
         ]
+    }
+
+    #[tokio::test]
+    async fn completion_request_carries_the_configured_temperature() {
+        for temperature in [0.7, 0.3] {
+            let (url, task, script) = serve(vec![completion("finish")]).await;
+            let model = model_at(&url, temperature);
+            let mut host = Rec {
+                log: Vec::new(),
+                fail_before: false,
+            };
+            let output = run(
+                &model,
+                &json!({}),
+                limits(),
+                &mut host,
+                &mut messages(),
+                "a",
+            )
+            .await
+            .unwrap();
+            task.abort();
+            assert_eq!(output, "done");
+            let requests = script.requests.lock().unwrap();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0]["temperature"], json!(temperature));
+        }
     }
 
     #[tokio::test]
